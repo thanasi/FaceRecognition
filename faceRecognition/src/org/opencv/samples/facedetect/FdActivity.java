@@ -12,6 +12,7 @@ import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
+//import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -32,7 +33,7 @@ import android.view.WindowManager;
 public class FdActivity extends Activity implements CvCameraViewListener {
 
     private static final String    TAG                 = "OCVSample::Activity";
-    private static final Scalar    FACE_RECT_COLOR     = new Scalar(0, 255, 0, 255);
+    private static final Scalar    FACE_RECT_COLOR     = new Scalar(204, 204, 0, 255);
     public static final int        JAVA_DETECTOR       = 0;
     public static final int        NATIVE_DETECTOR     = 1;
 
@@ -63,7 +64,19 @@ public class FdActivity extends Activity implements CvCameraViewListener {
     private Mat					   resizedFaceMat;
     private Mat					   matchResMat;
     private Activity 			   myAc = this;
-    private static final Scalar    FACE_MY_COLOR     = new Scalar(255, 0, 0, 255);
+    
+    private int					   mXd, mYd, mHd, mWd;
+    private int					   dYt, dYb, dXl, dXr;
+
+    MinMaxLocResult				   mMinMaxResult;
+    
+    
+    // emperically set threshold -- 
+    // --- 0.19f seems to work well for the computer screen
+    // --- 0.25f seems to reliably pick me up when the camera sees the real me
+    private static final float	   THRESH = 0.22f;
+    
+    private static final Scalar    FACE_MY_COLOR     = new Scalar(76, 187, 23, 255);
     //(HomeWork4)
     
     
@@ -118,7 +131,7 @@ public class FdActivity extends Activity implements CvCameraViewListener {
                         e.printStackTrace();
                         Log.e(TAG, "Failed to load cascade. Exception thrown: " + e);
                     }
-
+                    
                     mOpenCvCameraView.enableView();
                 } break;
                 default:
@@ -148,6 +161,8 @@ public class FdActivity extends Activity implements CvCameraViewListener {
 
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.fd_activity_surface_view);
         mOpenCvCameraView.setCvCameraViewListener(this);
+
+        
     }
 
     @Override
@@ -230,30 +245,48 @@ public class FdActivity extends Activity implements CvCameraViewListener {
         	 //(HW4) 1: Process the "myFace" image matrix we made earlier to be able to compare with the detected face. You will need
         	 //to resize it to the same size as the detected face and store the newly resized face in "resizedFaceMat". Take a look at 
         	 //ImgProc's "resize" method in the OpenCV Documentation
-        	 
-        	 
-        	 
-        	 
+        	 Imgproc.resize(myFace, resizedFaceMat, facesArray[i].size(), 0, 0, Imgproc.INTER_LINEAR);
+
         	 //(HW4) 2: Set the region of interest in the mGray image (we made it above, converted from our inputframe) so that we process information only at the detected face region (look at Mat.adjustROI method in the OpenCV documentation).
-        	 //You can get the x/y values here accessing that face's .x, .y, .height, and .width parameters + some simple math.
-        	
+        	 //You can get the x/y values here accessing that face's .x, .y, .height, and .width parameters + some simple math
+             	 
+        	 
+        	 // destination ROI
+        	 mXd = facesArray[i].x;
+        	 mYd = facesArray[i].y;
+        	 mHd = facesArray[i].height;
+        	 mWd = facesArray[i].width;
+        	 
+        	 dYt = -mYd;
+        	 dYb = (int) ((mYd+mHd) - mGray.size().height);
+        	 dXl = -mXd;
+        	 dXr = (int) ((mXd+mWd) - mGray.size().width);
+        	 
+        	 
+        	 Log.i(TAG, "adjusting ROI by " +  dYt + "\t" + dYb + "\t" + dXl + "\t" + dXr);
+        	 
+        	 // adjust ROI
+        	 mGray.adjustROI(dYt, dYb, dXl, dXr);	// dtop, dbottom, dleft, dright
         	 
         	 
         	 //(HW4) 3: use the Imgproc.matchTemplate method to compare and see if the face we served (resizedFaceMat) looks like our grayscale image
         	 //(mGray), and stores the match in matchResMat. Use the method CV_TM_CCOEFF_NORMED
-           	            	 
+        	 Imgproc.matchTemplate(mGray, resizedFaceMat, matchResMat, Imgproc.TM_CCOEFF_NORMED);
         	 
         	 
         	 //(HW4) 4: Get the maximum value of the result of matchTemplate to detect the difference and create a match coefficient. Here you will just need to store the result of Core.minMaxLoc 
+        	 mMinMaxResult = Core.minMaxLoc(matchResMat);
         	 
-           	
+        	 Log.i(TAG, "best match was " + mMinMaxResult.maxVal);
+        	 // (HW4) 5: Write an if-statement. If the maxVal of the result stored above is greater than some threshold (maybe... 0.55?) draw a rectangle on that face with color FACE_MY_COLOR (we defined it above. It's green as opposed to "FACE_RECT_COLOR" which is yellow)        	 
+        	 // You will need to play with this threshold value a little bit to best detect a match in the current environment.
+        	 if (mMinMaxResult.maxVal > THRESH) {
+        		 Core.rectangle(mRgba, facesArray[i].tl(), facesArray[i].br(), FACE_MY_COLOR, 3);
+        	 }  
         	 
-        	 //(HW4) 5: Write an if-statement. If the maxVal of the result stored above is greater than some threshold (maybe... 0.55?) draw a rectangle on that face with color FACE_MY_COLOR (we defined it above. It's red as opposed to "FACE_RECT_COLOR" which is green)        	 
-        	 //You will need to play with this threshold value a little bit to best detect a match in the current environment. 
-        	
-	        	 //if( returned max value > 0.55f ){
-	     		 //draw rectangle with FACE_MY_COLOR 
-	     	     //}
+        	 // move ROI back to edges
+        	 mGray.adjustROI(-dYt, -dYb, -dXl, -dXr);	// dtop, dbottom, dleft, dright
+  
         }
         //(HomeWorkChanges)
            
